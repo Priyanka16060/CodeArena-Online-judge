@@ -1,0 +1,78 @@
+x-worker-common: &worker-common
+  build:
+    context: .
+    dockerfile: Dockerfile.worker
+  environment:
+    DATABASE_URL: postgresql+asyncpg://judge:judge@postgres:5432/judge_db
+    REDIS_URL: redis://redis:6379/0
+    # IMPORTANT (Docker-outside-of-Docker): this MUST be the same absolute
+    # path on the host and inside this container (see the bind mount below
+    # and the README's "Docker-outside-of-Docker" section). The worker asks
+    # the HOST Docker daemon to bind-mount this path into a sandbox
+    # container, so the daemon needs to resolve it as a host path.
+    JUDGE_WORKDIR_ROOT: ${PWD}/judge-runs
+    WORKER_CONCURRENCY: "4"
+  volumes:
+    - /var/run/docker.sock:/var/run/docker.sock
+    - ${PWD}/judge-runs:${PWD}/judge-runs
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: judge
+      POSTGRES_PASSWORD: judge
+      POSTGRES_DB: judge_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U judge -d judge_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    environment:
+      DATABASE_URL: postgresql+asyncpg://judge:judge@postgres:5432/judge_db
+      REDIS_URL: redis://redis:6379/0
+      ENVIRONMENT: development
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-prod-please}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Horizontal scaling knob: `docker compose up --scale worker=6` (or bump
+  # `replicas` below with `docker compose up -d`) adds judging throughput
+  # linearly, independent of the API layer, because workers only coordinate
+  # through the shared Redis queue (BRPOP) — no leader, no sticky routing.
+  worker:
+    <<: *worker-common
+    deploy:
+      replicas: 3
+
+volumes:
+  pgdata:
