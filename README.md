@@ -21,6 +21,21 @@ with a verdict.
 -   PostgreSQL persistence
 -   Sample-test Run functionality
 
+## Screenshots
+
+### Problem & Code Editor
+![CodeArena Editor](screenshots/editor.png)
+
+### Accepted Submission
+![Accepted Submission](screenshots/accepted.png)
+
+### Wrong Answer Submission
+![Wrong Answer Submission](screenshots/wrong_answer.png)
+
+### Submissions
+![Submissions](screenshots/submissions.png)
+
+
 ## Architecture
 
 ``` text
